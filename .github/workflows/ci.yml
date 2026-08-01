@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      # Pure Dart with no path dependencies: no siblings to clone, no
+      # emulator, no network. The whole stove protocol — client, server, and
+      # a stand-in upstream — round-trips in-process.
+      - run: dart pub get
+      - run: dart analyze --fatal-infos
+      - run: dart test
