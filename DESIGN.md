@@ -1,6 +1,8 @@
-# Domovoi — design (v0.1, the governing build spec)
+# DomovoiDiscernment — design (v0.1, the governing build spec)
 
-**Domovoi — Discernment: family cognition for family matters.**
+**DomovoiDiscernment — family cognition for family matters.** (Repo and
+display name: `DomovoiDiscernment`; the Dart package stays `domovoi` for
+short imports — the WeatherGlass/`glass` pattern.)
 A model-agnostic **control plane** for household AI. It is not a harness
 (it runs no loop) and not an agent (it decides nothing): apps ask, the
 house answers, and Domovoi only governs *where the thinking runs* —

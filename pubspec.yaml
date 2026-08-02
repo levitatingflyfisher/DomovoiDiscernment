@@ -4,7 +4,9 @@ description: >-
   control plane for household AI: one Brain seam for apps, verified model
   acquisition, and the encrypted "stove" protocol to a home server.
 version: 0.1.0
-repository: https://github.com/levitatingflyfisher/domovoi
+# Repo/display name is DomovoiDiscernment (searchable); the Dart package
+# stays `domovoi` for short imports — the WeatherGlass/`glass` pattern.
+repository: https://github.com/levitatingflyfisher/DomovoiDiscernment
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
