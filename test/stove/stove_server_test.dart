@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:domovoi/src/keys.dart';
 import 'package:domovoi/src/stove/challenge_store.dart';
 import 'package:domovoi/src/stove/stove_codec.dart';
 import 'package:domovoi/src/stove/stove_server.dart';
@@ -41,6 +42,7 @@ class FakeUpstream {
 }
 
 void main() {
+  _failClosedRegression();
   final key = Uint8List.fromList(List.generate(32, (i) => i * 3 % 256));
   final wrongKey = Uint8List.fromList(List.generate(32, (i) => i + 1));
   final codec = StoveCodec();
@@ -255,4 +257,118 @@ void main() {
     expect(status, 403);
     expect(utf8.decode(body), 'refused');
   });
+}
+
+// Law 1 (fail closed, constant shape) must hold for EVERY path into the
+// handler, including the ones that throw before any check runs. A response
+// that leaves statusCode at its 200 default is a fail-OPEN oracle: an
+// unkeyed peer can tell "you crashed" from "refused".
+void _failClosedRegression() {
+  group('fail-closed under malformed requests', () {
+    late StoveServer server;
+    late Uint8List key;
+
+    setUp(() async {
+      key = await DomovoiKeys.stoveKey(utf8.encode('a-household-secret'));
+      server = StoveServer(0, key, Uri.parse('http://127.0.0.1:1/v1'), 'm');
+      await server.start();
+    });
+    tearDown(() => server.stop());
+
+    // A raw socket, not HttpClient: the client folds repeated headers into
+    // one comma-joined value, which is exactly what hides this bug.
+    Future<String> rawStatusLine(List<String> challengeHeaders) async {
+      final socket = await Socket.connect('127.0.0.1', server.port);
+      final headers = [
+        'POST /stove/ask HTTP/1.1',
+        'Host: 127.0.0.1:${server.port}',
+        for (final h in challengeHeaders) '$kStoveChallengeHeader: $h',
+        'Content-Length: 3',
+        'Connection: close',
+        '',
+        '',
+      ].join('\r\n');
+      socket.write(headers);
+      socket.add(const [1, 2, 3]);
+      await socket.flush();
+      final bytes = await socket.fold<List<int>>(
+        <int>[],
+        (acc, chunk) => acc..addAll(chunk),
+      );
+      final response = utf8.decode(bytes, allowMalformed: true);
+      socket.destroy();
+      return response.split('\r\n').first;
+    }
+
+    test('a duplicated challenge header refuses, never 200', () async {
+      expect(await rawStatusLine(['aaaa', 'bbbb']), contains('403'));
+    });
+
+    test('a missing challenge header refuses', () async {
+      expect(await rawStatusLine(const []), contains('403'));
+    });
+  });
+    test('a saturated challenge store answers 503, never an empty challenge',
+        () async {
+      final full = StoveServer(
+        0,
+        Uint8List.fromList(List.generate(32, (i) => i * 3 % 256)),
+        Uri.parse('http://127.0.0.1:1/v1'),
+        'm',
+        challenges: ChallengeStore(maxOutstanding: 1),
+      );
+      await full.start();
+      addTearDown(full.stop);
+
+      final client = HttpClient();
+      addTearDown(client.close);
+      Future<int> fetch() async {
+        final req = await client.get('127.0.0.1', full.port, '/stove/challenge');
+        final res = await req.close();
+        await res.drain<void>();
+        return res.statusCode;
+      }
+
+      expect(await fetch(), HttpStatus.ok);
+      expect(await fetch(), HttpStatus.serviceUnavailable);
+    });
+
+    test('a trickled body is cut off, not held open forever', () async {
+      final slow = StoveServer(
+        0,
+        Uint8List.fromList(List.generate(32, (i) => i * 3 % 256)),
+        Uri.parse('http://127.0.0.1:1/v1'),
+        'm',
+        bodyTimeout: const Duration(milliseconds: 200),
+      );
+      await slow.start();
+      addTearDown(slow.stop);
+
+      final client = HttpClient();
+      addTearDown(client.close);
+      final chReq =
+          await client.get('127.0.0.1', slow.port, '/stove/challenge');
+      final chRes = await chReq.close();
+      final challenge = (jsonDecode(await utf8.decodeStream(chRes))
+          as Map<String, dynamic>)['challenge'] as String;
+
+      final socket = await Socket.connect('127.0.0.1', slow.port);
+      addTearDown(socket.destroy);
+      socket.write([
+        'POST /stove/ask HTTP/1.1',
+        'Host: 127.0.0.1:${slow.port}',
+        '$kStoveChallengeHeader: $challenge',
+        'Content-Length: 100',
+        '',
+        '',
+      ].join('\r\n'));
+      socket.add(const [1, 2, 3]); // ...and then never the rest.
+      await socket.flush();
+
+      final bytes = await socket
+          .fold<List<int>>(<int>[], (acc, chunk) => acc..addAll(chunk))
+          .timeout(const Duration(seconds: 5));
+      expect(utf8.decode(bytes, allowMalformed: true), contains('403'));
+    });
+
 }

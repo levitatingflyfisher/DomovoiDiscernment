@@ -35,14 +35,15 @@ class ChallengeStore {
 
   /// Issues a fresh 16-byte challenge, records it, and returns it
   /// base64-encoded (the token the client binds into its ask frame's AAD).
-  String issue() {
+  ///
+  /// Returns null when [maxOutstanding] live challenges are already
+  /// outstanding. Refusing is deliberate: evicting to make room would let a
+  /// keyless flooder drop the challenge an honest client is holding between
+  /// its fetch and its ask. New challenges pause; in-flight asks survive;
+  /// expiry frees the room back.
+  String? issue() {
     _evictExpired();
-    if (_issued.length >= maxOutstanding) {
-      // Bound memory: drop the oldest outstanding challenge.
-      final oldest =
-          _issued.entries.reduce((a, b) => a.value.isBefore(b.value) ? a : b);
-      _issued.remove(oldest.key);
-    }
+    if (_issued.length >= maxOutstanding) return null;
     final bytes = Uint8List(16);
     for (var i = 0; i < bytes.length; i++) {
       bytes[i] = _random.nextInt(256);

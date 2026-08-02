@@ -35,9 +35,11 @@ class StoveServer {
     Uri upstream,
     String model, {
     ChallengeStore? challenges,
+    Duration bodyTimeout = const Duration(seconds: 30),
   })  : _key = key,
         _upstream = upstream,
         _model = model,
+        _bodyTimeout = bodyTimeout,
         _challenges = challenges ?? ChallengeStore();
 
   /// A hostile flood must not buy unbounded memory; a prompt is small.
@@ -48,6 +50,7 @@ class StoveServer {
   final Uri _upstream;
   final String _model;
   final ChallengeStore _challenges;
+  final Duration _bodyTimeout;
   final Dio _dio = Dio();
   final StoveCodec _codec = StoveCodec();
 
@@ -87,11 +90,14 @@ class StoveServer {
         await request.response.close();
       }
     } catch (_) {
-      // The socket may already be gone; never let one request kill the loop,
-      // and never echo internals to the peer.
+      // Law 1 reaches here too: an unhandled throw must refuse, not inherit
+      // HttpResponse's 200 default. A crash that answers 200 is an oracle an
+      // unkeyed peer can read, and it fails OPEN.
       try {
-        await request.response.close();
-      } catch (_) {}
+        await _refuse(request);
+      } catch (_) {
+        // The socket may already be gone; never let one request kill the loop.
+      }
     }
   }
 
@@ -108,9 +114,19 @@ class StoveServer {
   }
 
   Future<void> _handleChallenge(HttpRequest request) async {
+    final challenge = _challenges.issue();
+    if (challenge == null) {
+      // Saturated: a flood pauses new challenges rather than evicting the one
+      // an honest client is already holding. Say so plainly — this reveals
+      // nothing secret and tells a real client to retry.
+      request.response.statusCode = HttpStatus.serviceUnavailable;
+      request.response.write('busy');
+      await request.response.close();
+      return;
+    }
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode({
-      'challenge': _challenges.issue(),
+      'challenge': challenge,
       'ttlSeconds': _challenges.ttl.inSeconds,
     }));
     await request.response.close();
@@ -119,21 +135,27 @@ class StoveServer {
   Future<void> _handleAsk(HttpRequest request) async {
     // Challenge first: consumed before the frame is even read fully, so no
     // failure path leaves it reusable and no upstream work precedes it.
-    final token = request.headers.value(kStoveChallengeHeader);
-    if (token == null || !_challenges.consume(token)) {
-      return _refuse(request);
-    }
+    // Read the raw list: `headers.value` THROWS on a repeated header, and a
+    // throw here would skip the challenge check entirely. Exactly one value
+    // is the only shape a real client sends.
+    final tokens = request.headers[kStoveChallengeHeader];
+    if (tokens == null || tokens.length != 1) return _refuse(request);
+    final token = tokens.single;
+    if (!_challenges.consume(token)) return _refuse(request);
 
-    final builder = BytesBuilder(copy: false);
-    await for (final chunk in request) {
-      builder.add(chunk);
-      if (builder.length > maxFrameBytes) return _refuse(request);
+    // A peer that trickles bytes must not hold the handler open forever; the
+    // challenge is already spent, so there is nothing to gain by waiting.
+    final Uint8List body;
+    try {
+      body = await _readBounded(request).timeout(_bodyTimeout);
+    } catch (_) {
+      return _refuse(request);
     }
 
     final String answer;
     try {
       final plaintext = await _codec.open(
-        builder.takeBytes(),
+        body,
         _key,
         endpoint: StoveCodec.endpointAsk,
         challenge: token,
@@ -157,6 +179,17 @@ class StoveServer {
     request.response.headers.contentType = ContentType.binary;
     request.response.add(frame);
     await request.response.close();
+  }
+
+  Future<Uint8List> _readBounded(HttpRequest request) async {
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in request) {
+      builder.add(chunk);
+      if (builder.length > maxFrameBytes) {
+        throw const FormatException('frame exceeds the size cap');
+      }
+    }
+    return builder.takeBytes();
   }
 
   Future<String> _askUpstream(String prompt, {int? maxTokens}) async {

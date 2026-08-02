@@ -82,4 +82,44 @@ void main() {
       containsPair('model', 'cli-test-model'),
     );
   }, timeout: const Timeout(Duration(minutes: 2)));
+  // The stove key is HKDF(secret) with nothing else mixed in, so a short
+  // secret is brute-forceable by any keyless peer on the LAN. Peckish's sync
+  // spine learned this once (kMinSyncSecretLength); the floor travels.
+  test('refuses a --secret-hex below the entropy floor', () async {
+    final result = await runStove(['--secret-hex', 'aabb']);
+    expect(result.exitCode, isNot(0));
+    expect('${result.stderr}', contains('16 bytes'));
+  });
+
+  // --phrase-file's help already states the law; --secret-hex breaks it and
+  // must say so where a reader meets the option.
+  test('--help warns that --secret-hex itself leaks', () async {
+    final result = await runStove(['--help']);
+    final help = '${result.stdout}${result.stderr}';
+    final secretHexHelp = help
+        .split('\n')
+        .skipWhile((l) => !l.contains('--secret-hex'))
+        .takeWhile((l) => !l.contains('--upstream'))
+        .join(' ');
+    expect(secretHexHelp, contains('leaks'));
+    expect(secretHexHelp, contains('test'));
+  });
+
+  // The phrase is the whole key: a world-readable phrase file hands the
+  // household to every other account on the machine.
+  test('refuses a group/other-readable phrase file', () async {
+    final dir = await Directory.systemTemp.createTemp('stove-phrase');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/phrase');
+    await file.writeAsString(
+      'abandon abandon abandon abandon abandon abandon abandon abandon '
+      'abandon abandon abandon about',
+    );
+    await Process.run('chmod', ['644', file.path]);
+
+    final result = await runStove(['--phrase-file', file.path]);
+    expect(result.exitCode, isNot(0));
+    expect('${result.stderr}', contains('chmod 600'));
+  });
+
 }

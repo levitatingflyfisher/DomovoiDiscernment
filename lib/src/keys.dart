@@ -4,6 +4,11 @@ import 'dart:typed_data';
 import 'package:bip39_mnemonic/bip39_mnemonic.dart';
 import 'package:cryptography/cryptography.dart';
 
+/// The floor a raw stove secret must clear. The frame key is HKDF(secret)
+/// with no other input, so this length IS the defense against a keyless peer
+/// brute-forcing the household channel (Peckish sync holds the same line).
+const int kMinStoveSecretBytes = 16;
+
 /// Key derivation for the stove protocol.
 ///
 /// Provisioning law: the secret IS the pairing. The same household phrase on

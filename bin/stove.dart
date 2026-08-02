@@ -17,7 +17,8 @@ Future<void> main(List<String> argv) async {
     )
     ..addOption(
       'secret-hex',
-      help: 'Household secret as hex (tests/advanced use).',
+      help: 'Household secret as raw hex — test use. It leaks through '
+          'process lists and shell history; prefer --phrase-file.',
     )
     ..addOption(
       'upstream',
@@ -91,6 +92,15 @@ Future<Uint8List> _resolveSecret({
     _die('Pass --phrase-file or --secret-hex, not both.');
   }
   if (phraseFile != null) {
+    // The phrase IS the household key. A file any other account can read has
+    // already given it away, so refuse rather than serve a leaked household.
+    if (!Platform.isWindows) {
+      final mode = (await File(phraseFile).stat()).mode;
+      if (mode & 0x3F != 0) {
+        _die('The phrase file is readable by other accounts on this '
+            'machine. Run: chmod 600 $phraseFile');
+      }
+    }
     final String phrase;
     try {
       phrase = (await File(phraseFile).readAsString()).trim();
@@ -107,6 +117,12 @@ Future<Uint8List> _resolveSecret({
   final hex = secretHex!;
   if (hex.isEmpty || hex.length.isOdd || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex)) {
     _die('--secret-hex must be non-empty hex bytes.');
+  }
+  // The frame key is HKDF(secret) with no other input, so the secret's own
+  // entropy is the whole defense against a keyless peer on the LAN.
+  if (hex.length < kMinStoveSecretBytes * 2) {
+    _die('--secret-hex must be at least $kMinStoveSecretBytes bytes '
+        '(${kMinStoveSecretBytes * 2} hex characters).');
   }
   return Uint8List.fromList([
     for (var i = 0; i < hex.length; i += 2)
