@@ -43,7 +43,8 @@ he never leaves it.
 |---|---|
 | The package: Brain seam, ModelTrust, resumable downloads, keys, codec, client, server, CLI | **Shipped** — pure Dart, 61 tests |
 | Stove protocol: client ↔ server ↔ upstream | **Shipped** — proven in-process (round-trip suite: shared phrase completes an ask, wrong secret refused, replay refused, status leaks nothing) |
-| Real Ollama on a real LAN, phone to desktop, end to end | **NOT yet run on hardware** — the protocol is CI-proven; the kitchen-table proof is still owed |
+| The shipped `stove` binary, over a real socket, refusing a wrong phrase | **Shipped** — the CLI served a real upstream on 2026-08-02: the right phrase got its answer, a valid-but-different BIP39 phrase got "The stove refused this ask" |
+| Real Ollama on a real LAN, phone to desktop, end to end | **NOT yet run on hardware** — the wire is proven against a stand-in upstream on one machine; a real model, a real phone, and a real Wi-Fi hop are still owed |
 | App adoption (Peckish `stove` backend, Reckon `stove` provider, both on the shared download engine) | **In flight** — same release as this package, separate repos |
 | Streaming answers | **Not built** — `complete()` returns whole text; a non-goal until a household asks for it |
 | Per-device revocation | **Not built, deliberately** — anyone with the phrase has the household's full trust; the household is the trust boundary, not the individual (ADR-0003) |
