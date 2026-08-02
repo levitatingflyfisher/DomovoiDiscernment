@@ -11,6 +11,11 @@ repository: https://github.com/levitatingflyfisher/DomovoiDiscernment
 environment:
   sdk: ">=3.4.0 <4.0.0"
 
+# `dart pub global activate` puts a bare `stove` on the PATH; from a checkout
+# the same binary is `dart run domovoi:stove`.
+executables:
+  stove: stove
+
 dependencies:
   # Crypto primitives only — HKDF-SHA256 + ChaCha20-Poly1305 + PBKDF2 come
   # from the same audited package sanctuary_auth_core uses. Nothing is

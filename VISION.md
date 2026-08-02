@@ -41,7 +41,7 @@ he never leaves it.
 
 | Claim | Status |
 |---|---|
-| The package: Brain seam, ModelTrust, resumable downloads, keys, codec, client, server, CLI | **Shipped** — pure Dart, 61 tests |
+| The package: Brain seam, ModelTrust, resumable downloads, keys, codec, client, server, CLI | **Shipped** — pure Dart, 70 tests |
 | Stove protocol: client ↔ server ↔ upstream | **Shipped** — proven in-process (round-trip suite: shared phrase completes an ask, wrong secret refused, replay refused, status leaks nothing) |
 | The shipped `stove` binary, over a real socket, refusing a wrong phrase | **Shipped** — the CLI served a real upstream on 2026-08-02: the right phrase got its answer, a valid-but-different BIP39 phrase got "The stove refused this ask" |
 | A real local model answering through the protocol | **Shipped** — 2026-08-02, Ollama serving `qwen3:1.7b` on a 5.9 GiB-VRAM box: a Peckish-shaped meal-parsing prompt came back as JSON in **44 s cold, 8 s warm** (the 36 s difference is model load, not the wire). Worth knowing before an app promises a wait |

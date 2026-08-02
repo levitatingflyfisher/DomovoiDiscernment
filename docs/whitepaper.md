@@ -124,13 +124,16 @@ refusal to route is its core privacy feature, not a missing one.
 
 ## 6. Honest status
 
-The package is real: 61 tests, pure Dart, and the entire protocol —
-client ↔ server ↔ fake upstream — proves itself in-process in CI,
-including replay refusal and wrong-key refusal. What has *not* happened
-yet: a real phone asking a real Ollama across a real kitchen's Wi-Fi (the
-protocol is CI-proven; the hardware proof is owed), and the two consuming
-apps' adoption lands in this same release rather than being shipped
-history. Streaming, per-device revocation, and mDNS discovery are not
+The package is real: 70 tests, pure Dart, and the entire protocol —
+client ↔ server ↔ a stand-in upstream — proves itself in-process under
+plain `dart test` — no device, no emulator, no network — including replay
+refusal, wrong-key refusal, and the fail-closed shape of every
+rejection. It has also
+answered for real: the shipped binary in front of Ollama serving
+`qwen3:1.7b` parsed a meal into JSON in 44 s cold and 8 s warm. What has
+*not* happened yet: a real phone asking across a real kitchen's Wi-Fi,
+and the two consuming apps' adoption lands in this same release rather
+than being shipped history. Streaming, per-device revocation, and mDNS discovery are not
 built — the first by scope, the second by conviction, the third until
 typing an IP once proves to be actual friction. The full scorecard is in
 [VISION.md](../VISION.md).
