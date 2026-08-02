@@ -14,6 +14,7 @@ abstract class Brain {
 
 /// A calm, displayable failure from a [Brain].
 class AskException implements Exception {
+  /// [message] is shown to people; [cause] stays in logs and tests.
   AskException(this.message, {this.cause});
 
   /// Human-readable, in the interface's voice — no stack traces, no jargon.
