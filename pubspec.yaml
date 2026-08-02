@@ -1,0 +1,28 @@
+name: domovoi
+description: >-
+  Discernment — family cognition for family matters. A model-agnostic
+  control plane for household AI: one Brain seam for apps, verified model
+  acquisition, and the encrypted "stove" protocol to a home server.
+version: 0.1.0
+repository: https://github.com/levitatingflyfisher/domovoi
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  # Crypto primitives only — HKDF-SHA256 + ChaCha20-Poly1305 + PBKDF2 come
+  # from the same audited package sanctuary_auth_core uses. Nothing is
+  # hand-rolled here.
+  cryptography: ^2.7.0
+  # Standard BIP39 — the stove derives the same 512-bit seed from the same
+  # household phrase as the apps' sanctuary spine (PBKDF2-HMAC-SHA512,
+  # 2048 iterations, salt "mnemonic").
+  bip39_mnemonic: ^4.0.1
+  # HTTP for the resumable download engine and the stove client/upstream.
+  dio: ^5.4.0
+  # CLI argument parsing for bin/stove.dart.
+  args: ^2.4.0
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0
