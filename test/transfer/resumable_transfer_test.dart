@@ -139,6 +139,68 @@ void main() {
       expect(partFile.lengthSync(), lessThan(body.length));
     });
 
+    test('a finished run reports the completed outcome', () async {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server!.listen((req) async {
+        req.response
+          ..statusCode = HttpStatus.ok
+          ..contentLength = body.length
+          ..add(body);
+        await req.response.close();
+      });
+
+      final outcome = await resumableDownload(
+        dio: dio,
+        url: urlOf(server!),
+        partFile: partFile,
+        promote: promote,
+      );
+
+      expect(outcome, TransferOutcome.completed);
+      expect(promoteCalls, 1);
+    });
+
+    test('a cancelled run reports the cancelled outcome, .part intact',
+        () async {
+      final gate = Completer<void>();
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server!.listen((req) async {
+        req.response
+          ..bufferOutput = false
+          ..statusCode = HttpStatus.ok
+          ..contentLength = body.length
+          ..add(body.sublist(0, 1024));
+        await req.response.flush();
+        try {
+          await gate.future;
+          await req.response.close();
+        } catch (_) {}
+      });
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      final cancelToken = CancelToken();
+      final outcome = await resumableDownload(
+        dio: dio,
+        url: urlOf(server!),
+        partFile: partFile,
+        promote: promote,
+        cancelToken: cancelToken,
+        onProgress: (received, total) {
+          if (!cancelToken.isCancelled) cancelToken.cancel();
+        },
+      );
+
+      // Awaiting alone used to say nothing: a caller that announced
+      // "installed" here would be announcing a half file it never installed.
+      expect(outcome, TransferOutcome.cancelled);
+      expect(promoteCalls, 0);
+      // Resume depends on the partial surviving.
+      expect(partFile.existsSync(), isTrue);
+      expect(partFile.lengthSync(), lessThan(body.length));
+    });
+
     test('a 200 answering a resume discards the partial and restarts clean',
         () async {
       // Stale bytes that must NOT survive: a host that ignores Range would

@@ -1,6 +1,22 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+
+/// How a [resumableDownload] run ended.
+///
+/// A cancelled run also finishes without error — quietly stopping is not a
+/// failure — so "no exception" alone never meant "installed". The two are
+/// named apart here because a caller that cannot tell them apart will
+/// eventually announce a half-file as a finished install.
+enum TransferOutcome {
+  /// The last byte arrived and `promote` ran: the artifact is installed.
+  completed,
+
+  /// The cancel token fired before the last byte. The partial is kept for
+  /// Resume and `promote` never ran.
+  cancelled,
+}
 
 /// The one resumable-transfer engine behind every big household download
 /// (model bundles, data slices — native builds only; web surfaces keep
@@ -27,11 +43,13 @@ import 'package:dio/dio.dart';
 /// future's error.
 ///
 /// [cancelToken] is the pause button: cancelling it mid-transfer ends the
-/// run quietly — the future completes normally, the partial stays for
-/// Resume, and [promote] never runs. If the transfer had already
-/// completed, the promotion underway is allowed to finish — the artifact
-/// is whole, installing it loses nothing.
-Future<void> resumableDownload({
+/// run quietly — the future completes normally with
+/// [TransferOutcome.cancelled], the partial stays for Resume, and
+/// [promote] never runs. If the transfer had already completed, the
+/// promotion underway is allowed to finish and the run is
+/// [TransferOutcome.completed] — the artifact is whole, installing it
+/// loses nothing.
+Future<TransferOutcome> resumableDownload({
   required Dio dio,
   required String url,
   required File partFile,
@@ -100,10 +118,79 @@ Future<void> resumableDownload({
     }
 
     await promote();
+    return TransferOutcome.completed;
   } on DioException catch (err) {
     // The caller's own cancel ends the run quietly: the kept partial is
     // the whole story, and promote never runs.
-    if (err.type == DioExceptionType.cancel) return;
+    if (err.type == DioExceptionType.cancel) return TransferOutcome.cancelled;
     rethrow;
   }
+}
+
+/// [resumableDownload] in the dialect the download screens already speak:
+/// progress as `(receivedBytes, totalBytes)` events, `-1` for a total the
+/// server never sent, and the listener leaving as the pause button.
+///
+/// The engine's laws are unchanged — this only changes who does the
+/// asking. Every argument means what it means above.
+///
+/// **Cold.** Nothing hits the wire until something subscribes. An eager
+/// start would leave a stream nobody listened to downloading *and
+/// promoting* an artifact with no reachable cancel — a transfer running
+/// on behalf of no one. Cancelling the subscription is therefore always
+/// enough to stop the work, because the subscription is what started it.
+/// (One listener, once: the transfer is a real thing happening, not a
+/// value to be replayed.)
+///
+/// **Cancellation is not silence.** [onOutcome] fires exactly once, just
+/// BEFORE the stream closes, so a consumer that merely awaits the stream
+/// can read the outcome immediately after and know whether it may say
+/// "installed". It reports [TransferOutcome.completed] or
+/// [TransferOutcome.cancelled] only; a transfer or promotion error rides
+/// the stream's error channel instead. Pass [cancelToken] to hold the
+/// pause button somewhere other than the subscription — the stream then
+/// closes normally on cancel, and [onOutcome] is the only thing that
+/// tells you it was not a finish.
+///
+/// Note that `await subscription.cancel()` returns once the token is
+/// cancelled, not once the transfer has wound down; a promotion already
+/// underway is still allowed to finish.
+Stream<(int, int)> resumableDownloadStream({
+  required Dio dio,
+  required String url,
+  required File partFile,
+  required Future<void> Function() promote,
+  CancelToken? cancelToken,
+  void Function(TransferOutcome outcome)? onOutcome,
+}) {
+  final token = cancelToken ?? CancelToken();
+  late final StreamController<(int, int)> controller;
+  controller = StreamController<(int, int)>(
+    onListen: () {
+      unawaited(resumableDownload(
+        dio: dio,
+        url: url,
+        partFile: partFile,
+        promote: promote,
+        cancelToken: token,
+        onProgress: (received, total) {
+          // The listener can leave mid-byte; the engine finds out one
+          // chunk later, and a closed controller refuses events.
+          if (!controller.isClosed) controller.add((received, total ?? -1));
+        },
+      ).then((outcome) {
+        onOutcome?.call(outcome);
+        return controller.close();
+      }, onError: (Object err, StackTrace stack) {
+        if (!controller.isClosed) controller.addError(err, stack);
+        return controller.close();
+      }));
+    },
+    // A transfer that already finished shrugs this off: cancel() is a
+    // no-op once there is nothing left in flight.
+    onCancel: () {
+      if (!token.isCancelled) token.cancel();
+    },
+  );
+  return controller.stream;
 }

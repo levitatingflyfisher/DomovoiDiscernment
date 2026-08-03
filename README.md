@@ -23,7 +23,10 @@ the family's own compute with no account in between.
 - **`resumableDownload`** — the cancel-aware, resume-from-byte transfer
   engine for big household downloads (model bundles). Completion is the
   atomic `.part` → final rename inside the caller's `promote`, never a size
-  guess.
+  guess. It returns a `TransferOutcome`, because a cancelled transfer also
+  ends without error and nothing may call that an install.
+  `resumableDownloadStream` is the same engine wearing the progress-event
+  dialect the download screens speak.
 - **The stove protocol** — encrypted asks to a home server.
   ChaCha20-Poly1305 frames keyed from the household phrase, single-use
   challenges, fail-closed `403`s. `StoveClient` is a `Brain`; `StoveServer`

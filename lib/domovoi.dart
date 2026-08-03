@@ -9,7 +9,9 @@
 /// Public API:
 ///   - [Brain] / [AskException] — the one seam apps implement or consume
 ///   - [ModelSpec] / [ModelTrust] — model catalog entry + the trust laws
-///   - [resumableDownload] — cancel-aware, resume-from-byte download engine
+///   - [resumableDownload] / [TransferOutcome] — cancel-aware,
+///     resume-from-byte download engine, and how a run ended
+///   - [resumableDownloadStream] — the same engine as progress events
 ///   - [DomovoiKeys] — BIP39 seed + HKDF stove-key derivation
 ///   - [StoveCodec] — AEAD frame codec for the stove protocol
 ///   - [StoveClient] — a [Brain] that asks the household stove

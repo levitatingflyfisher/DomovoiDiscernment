@@ -19,7 +19,10 @@ governing build spec**; decisions live in docs/adr/.
 - `lib/src/model/` — `ModelSpec` (pure data, no plugin imports) and
   `ModelTrust.check` (the trust laws as one reusable validator).
 - `lib/src/transfer/` — `resumableDownload`: Range-resume, cancel-aware,
-  promote-once. Ported from Peckish post-review; treat it as hardened.
+  promote-once, and it says which of the two ways it ended
+  (`TransferOutcome`). `resumableDownloadStream` is the same engine as
+  progress events for download screens. Ported from Peckish post-review;
+  treat it as hardened.
 - `lib/src/keys.dart` — `DomovoiKeys`: BIP39 seed from the household
   phrase, HKDF-SHA256 stove key under the frozen domain string.
 - `lib/src/stove/` — `stove_codec.dart` (AEAD frames + AAD binding),
