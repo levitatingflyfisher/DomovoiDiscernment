@@ -197,6 +197,38 @@ void main() {
       expect(outcomes, [TransferOutcome.cancelled]);
     });
 
+    test('a cancel that lands during promotion lets the promotion finish',
+        () async {
+      // Carried over from Peckish, which learned it the hard way: the
+      // listener leaving is the pause button, but a transfer that already
+      // reached promote() is INSTALLING. Aborting there leaves a complete
+      // .part next to no installed file, and the next visit re-downloads
+      // bytes that are already on disk.
+      host = await _TricklingHost.start();
+      final promoteStarted = Completer<void>();
+      final promoteGate = Completer<void>();
+      var promoteFinished = false;
+
+      final sub = resumableDownloadStream(
+        dio: dio,
+        url: host!.url,
+        partFile: partFile,
+        promote: () async {
+          promoteStarted.complete();
+          await promoteGate.future;
+          promoteFinished = true;
+        },
+      ).listen((_) {});
+
+      await promoteStarted.future;
+      await sub.cancel();
+      promoteGate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(promoteFinished, isTrue,
+          reason: 'a completed transfer may finish installing quietly');
+    });
+
     test('a transfer error rides the stream, not the outcome seam', () async {
       final failing = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => failing.close(force: true));
